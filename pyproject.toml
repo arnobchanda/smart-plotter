@@ -1,0 +1,7 @@
+[project]
+name = "smart-plotter"
+version = "0.1.0"
+description = "A simple, cross-platform GUI for plotting real-time data from serial ports and program outputs."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
