@@ -18,27 +18,23 @@ class PlotterGUI:
         binds it as the default font for the application.
         """
         font_file = "JetBrainsMono-Regular.ttf"
-        font_url = f"https://github.com/JetBrains/JetBrainsMono/raw/refs/heads/master/fonts/ttf/{font_file}"
+        font_url = f"https://raw.githubusercontent.com/google/fonts/main/ofl/jetbrainsmono/{font_file}"
         
-        # --- Download the font if it doesn't exist ---
         if not os.path.exists(font_file):
             print(f"Downloading font: {font_file}...")
             try:
                 response = requests.get(font_url)
-                response.raise_for_status()  # Raise an exception for bad status codes
+                response.raise_for_status()
                 with open(font_file, "wb") as f:
                     f.write(response.content)
                 print("Font downloaded successfully.")
             except requests.exceptions.RequestException as e:
                 print(f"Error downloading font: {e}")
-                # If download fails, we won't try to load it.
-                # Dear PyGui will use its default font.
                 return
 
-        # --- Load and bind the font ---
         with dpg.font_registry():
             try:
-                default_font = dpg.add_font(font_file, 19)
+                default_font = dpg.add_font(font_file, 16)
                 dpg.bind_font(default_font)
                 print("JetBrains Mono font bound successfully.")
             except Exception as e:
@@ -47,73 +43,86 @@ class PlotterGUI:
 
     def create_viewport(self):
         """Creates the main application window (viewport)."""
+        # Set the initial size as requested
         dpg.create_viewport(
-            title="Smart Plotter (V0.4.0)",
-            width=700,
-            height=500
+            title="Smart Serial Plotter - V1.6 (Dear PyGui)",
+            width=1120,
+            height=700
         )
 
+    def _sync_child_heights_to_plot(self, sender, app_data, user_data):
+        try:
+            _, plot_height = dpg.get_item_rect_size(user_data["plot_tag"])
+            row_height = int(plot_height / 3) - 3
+            for tag in user_data["row_tags"]:
+                dpg.configure_item(tag, height=row_height)
+        except KeyError:
+            pass
+    
     def setup_ui(self, app_callbacks):
         """
         Sets up the primary window and all UI elements.
-        Callbacks from the main app are passed in to link UI to logic.
         """
-        with dpg.window(label="Main Window", tag="primary_window"):
-            with dpg.tab_bar():
-                # --- Serial Port Tab ---
-                with dpg.tab(label="Serial Port"):
-                    dpg.add_text("Available Serial Ports:")
-                    dpg.add_listbox(
-                        items=[], 
-                        tag="-PORT_LIST-", 
-                        num_items=5, 
-                        callback=app_callbacks["update_buttons"]
-                    )
-                    dpg.add_button(
-                        label="Refresh", 
-                        callback=app_callbacks["refresh_ports"], 
-                        tag="-REFRESH-"
-                    )
-                    dpg.add_combo(
-                        items=['9600', '19200', '38400', '57600', '115200'],
-                        label="Baud Rate",
-                        default_value='115200',
-                        tag="-BAUD-"
-                    )
-                    dpg.add_button(
-                        label="Connect", 
-                        tag="-CONNECT-", 
-                        callback=app_callbacks["connect"],
-                        enabled=False
-                    )
+        with dpg.window(label="Main Window", tag="primary_window", autosize=True, no_resize=False, no_move=False, width=1300):
+            with dpg.table(header_row=False, resizable=True, policy=dpg.mvTable_SizingStretchSame, borders_innerV=True):
+                dpg.add_table_column(width_fixed=True, init_width_or_weight=600)
+                dpg.add_table_column(width_stretch=True, width=400)
 
-                # --- Program Output Tab ---
-                with dpg.tab(label="Program Output"):
-                    dpg.add_text("Select a Python script to run:")
-                    with dpg.group(horizontal=True):
-                        dpg.add_input_text(tag="-SCRIPT_PATH-", width=-80)
-                        dpg.add_button(
-                            label="Browse", 
-                            callback=lambda: dpg.show_item("file_dialog_id")
-                        )
-                    dpg.add_button(
-                        label="Run Program", 
-                        tag="-RUN-", 
-                        callback=app_callbacks["run_program"],
-                        enabled=False
-                    )
+                with dpg.table_row():
+                    row_tags = []
+                    
+                    with dpg.table(header_row=False, tag="left_column_table"):
+                        dpg.add_table_column()
+                    
+                        for i in range(3):
+                            with dpg.table_row():
+                                tag = f"child_row_{i}"
+                                row_tags.append(tag)
+                                with dpg.child_window(tag=tag, autosize_x=True, no_scrollbar=True):
+                                    if i == 0:
+                                        with dpg.tab_bar(tag="-TAB_GROUP-"):
+                                            with dpg.tab(label="Serial Port"):
+                                                dpg.add_text("Available Serial Ports:")
+                                                dpg.add_listbox(items=[], tag="-PORT_LIST-", num_items=5, callback=app_callbacks["update_buttons"])
+                                                dpg.add_button(label="Refresh", callback=app_callbacks["refresh_ports"], tag="-REFRESH-", width=-1)
+                                                dpg.add_combo(items=['9600', '19200', '38400', '57600', '115200'], label="Baud Rate", default_value='115200', tag="-BAUD-")
+                                                
+                                            with dpg.tab(label="Program Output"):
+                                                dpg.add_text("Select a Python script to run:")
+                                                with dpg.group(horizontal=True):
+                                                    dpg.add_input_text(tag="-SCRIPT_PATH-", width=-80, callback=app_callbacks["update_buttons"])
+                                                    dpg.add_button(label="Browse", callback=lambda: dpg.show_item("file_dialog_id"))
+                                                dpg.add_button(label="Run Program", tag="-RUN-", callback=app_callbacks["run_program"], enabled=False, width=-1)
+                                    
+                                    elif i == 1:
+                                        dpg.add_text("Data Output Template:")
+                                        dpg.add_input_text(tag="-FORMAT-", default_value="Temp: ${temp}, Hum: ${humidity}", label="", width=-1)
+                                        dpg.add_text("Use ${name} to define a variable.", color=(200, 200, 200))
+                                        with dpg.group(horizontal=True):
+                                            dpg.add_checkbox(label="Show Raw Output", tag="-SHOW_LOG-", callback=app_callbacks["toggle_log_window"])
+                                            dpg.add_checkbox(label="Autoscroll Output", tag="-LOG_AUTOSCROLL-", default_value=True)
+                                        dpg.add_button(label="Connect", tag="-CONNECT-", callback=app_callbacks["connect"], enabled=False, width=-1)
+                                    
+                                    else:
+                                        dpg.add_button(label="Clear Plot", callback=app_callbacks["clear_plot"], width=-1)
+                                        dpg.add_text("Status: Disconnected", tag="-STATUS-")
 
-            # --- Status Bar ---
-            dpg.add_separator()
-            dpg.add_text("Status: Disconnected", tag="-STATUS-")
+                    with dpg.plot(label="Real-time Data Plot", height=-1, width=-1, tag="-PLOT-"):
+                        dpg.add_plot_legend()
+                        dpg.add_plot_axis(dpg.mvXAxis, label="Time", tag="x_axis", scale=1)
+                        dpg.add_plot_axis(dpg.mvYAxis, label="Value", tag="y_axis")
+                            
+        with dpg.window(label="Raw Data Log", tag="-LOG_WINDOW-", show=False, width=600, height=250, pos=(100, 100)):
+            with dpg.child_window(tag="-LOG_CHILD-", autosize_x=True, autosize_y=True):
+                 dpg.add_text("Waiting for data...", tag="-LOG_TEXT-", wrap=580)
 
-        # --- Setup File Dialog (initially hidden) ---
         with dpg.file_dialog(
-            directory_selector=False, 
-            show=False, 
-            callback=app_callbacks["file_selected"], 
-            tag="file_dialog_id",
-            width=400, height=300):
+            directory_selector=False, show=False, callback=app_callbacks["file_selected"], 
+            tag="file_dialog_id", width=400, height=300):
             dpg.add_file_extension(".py", color=(0, 255, 0, 255))
             dpg.add_file_extension(".*")
-
+        
+        with dpg.item_handler_registry(tag="plot_resize_handler"):
+            dpg.add_item_resize_handler(callback=self._sync_child_heights_to_plot,
+                                        user_data={"plot_tag": "-PLOT-", "row_tags": row_tags})
+        dpg.bind_item_handler_registry("-PLOT-", "plot_resize_handler")
